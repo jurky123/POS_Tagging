@@ -8,41 +8,37 @@ from dataloader import DataLoader
 from model import BERT_POS_Tagging_Model
 
 # 先把超参数都定义在最外面。
-VOCAB_SIZE = 30522
-NUM_LABELS = 37
 D_MODEL = 512
 NHEAD = 8
 NUM_LAYERS = 6
 DIM_FEEDFORWARD = 2048
 DROPOUT = 0.1
-MAX_LEN = 512
 
 BATCH_SIZE = 16
 LR = 1e-4
 EPOCHS = 10
-MODEL_SAVE_PATH = "model.pt"
 
 
-def train():
+def train(dataset_type: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 加载数据
-    train_loader = DataLoader("english", "train", vocab_size=VOCAB_SIZE,
-                              batch_size=BATCH_SIZE, max_len=MAX_LEN)
-    test_loader = DataLoader("english", "test", vocab_size=VOCAB_SIZE,
-                             batch_size=BATCH_SIZE, max_len=MAX_LEN,
+    # 加载数据（vocab_size、max_len、num_labels 从数据集自动获取）
+    train_loader = DataLoader(dataset_type, "train", batch_size=BATCH_SIZE)
+    test_loader = DataLoader(dataset_type, "test", batch_size=BATCH_SIZE,
+                             max_len=train_loader.max_len,
                              token2id=train_loader.token2id)
+    num_labels = train_loader.num_labels
 
     # 初始化模型
     model = BERT_POS_Tagging_Model(
-        vocab_size=VOCAB_SIZE,
-        num_labels=NUM_LABELS,
+        vocab_size=train_loader.vocab_size,
+        num_labels=num_labels,
         d_model=D_MODEL,
         nhead=NHEAD,
         num_layers=NUM_LAYERS,
         dim_feedforward=DIM_FEEDFORWARD,
         dropout=DROPOUT,
-        max_len=MAX_LEN,
+        max_len=train_loader.max_len,
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
@@ -52,7 +48,6 @@ def train():
         model.train()
         total_loss = 0
         for batch_ids, batch_tags in train_loader:
-            # 填充到批次内最长
             input_ids = nn.utils.rnn.pad_sequence(
                 [torch.tensor(ids, dtype=torch.long) for ids in batch_ids],
                 batch_first=True, padding_value=0
@@ -64,7 +59,7 @@ def train():
             ).to(device)
 
             logits = model(input_ids, attention_mask)
-            loss = loss_fn(logits.view(-1, NUM_LABELS), labels.view(-1))
+            loss = loss_fn(logits.view(-1, num_labels), labels.view(-1))
 
             optimizer.zero_grad()
             loss.backward()
@@ -96,7 +91,11 @@ def train():
                 total += mask.sum().item()
 
         accuracy = correct / total if total > 0 else 0.0
-        print(f"epoch {epoch + 1:2d}  loss={total_loss:.4f}  test accuracy={accuracy:.4f}")
+        print(f"[{dataset_type}] epoch {epoch + 1:2d}  loss={total_loss:.4f}  test accuracy={accuracy:.4f}")
 
-    model.save_model(MODEL_SAVE_PATH)
-    print(f"model saved to {MODEL_SAVE_PATH}")
+    save_path = f"model_{dataset_type}.pt"
+    model.save_model(save_path)
+    print(f"model saved to {save_path}")
+if __name__ == "__main__":
+    for dataset in ["english", "english_perturbed", "alien"]:
+        train(dataset)    # 训练并保存模型

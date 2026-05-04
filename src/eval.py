@@ -8,25 +8,26 @@ from dataloader import DataLoader
 from model import BERT_POS_Tagging_Model
 
 
-def evaluate(model_path: str, dataset_type: str, vocab_size: int = 30522,
-             num_labels: int = 37, d_model: int = 512, nhead: int = 8,
+def evaluate(model_path: str, dataset_type: str,
+             d_model: int = 512, nhead: int = 8,
              num_layers: int = 6, dim_feedforward: int = 2048,
-             dropout: float = 0.1, max_len: int = 128) -> float:
-    # 加载数据
-    train_loader = DataLoader(dataset_type, "train", vocab_size=vocab_size, max_len=max_len)
-    test_loader = DataLoader(dataset_type, "test", vocab_size=vocab_size, max_len=max_len,
+             dropout: float = 0.1) -> float:
+    # 加载数据（vocab_size、max_len、num_labels 从数据集自动获取）
+    train_loader = DataLoader(dataset_type, "train")
+    test_loader = DataLoader(dataset_type, "test",
+                             max_len=train_loader.max_len,
                              token2id=train_loader.token2id)
 
     # 加载模型
     model = BERT_POS_Tagging_Model(
-        vocab_size=vocab_size,
-        num_labels=num_labels,
+        vocab_size=train_loader.vocab_size,
+        num_labels=train_loader.num_labels,
         d_model=d_model,
         nhead=nhead,
         num_layers=num_layers,
         dim_feedforward=dim_feedforward,
         dropout=dropout,
-        max_len=max_len,
+        max_len=train_loader.max_len,
     )
     model.load_model(model_path)
     model.eval()
@@ -40,8 +41,8 @@ def evaluate(model_path: str, dataset_type: str, vocab_size: int = 30522,
                 if len(sent_ids) == 0:
                     continue
                 input_ids = torch.tensor(sent_ids, dtype=torch.long).unsqueeze(0)
-                probs = model(input_ids)
-                preds = torch.argmax(probs, dim=-1).squeeze(0)
+                logits = model(input_ids)
+                preds = torch.argmax(logits, dim=-1).squeeze(0)
 
                 valid_len = len(sent_tags)
                 preds = preds[:valid_len]
