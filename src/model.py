@@ -60,10 +60,7 @@ class BERT_POS_Tagging_Model(nn.Module):
         # 再经过线性层，输出每个token的POS标签得分
         logits = self.classifier(x)
 
-        # 最后，对每个token的得分进行softmax，得到每个token的POS标签概率分布
-        probs = torch.softmax(logits, dim=-1)
-
-        return probs
+        return logits
 
     def save_model(self, path: str):
         torch.save(self.state_dict(), path)

@@ -3,7 +3,7 @@
 得到的是tokens和tags列表。
 """
 import os
-from typing import Tuple, Iterator
+from typing import Tuple, Iterator, Optional
 
 import pandas as pd
 
@@ -26,30 +26,44 @@ DATASET_CONFIG = {
 }
 
 
-def load_dataset(dataset_type: str, split: str) -> Tuple[list, list]:
-    """Load tokens and tags from a parquet file.
-
-    Args:
-        dataset_type: "english", "english_perturbed", or "alien"
-        split: "train" or "test"
-
-    Returns:
-        tokens: list[list[str]], each inner list is a sentence's tokens
-        tags: list[list[int]], each inner list is the corresponding POS tag ids
-    """
-    cfg = DATASET_CONFIG[dataset_type]
-    path = os.path.join(DATA_DIR, cfg[split])
-    df = pd.read_parquet(path)
-    return df["tokens"].tolist(), df["pos_tags"].tolist()
-
-
 class DataLoader:
-    """Simple data loader that yields (tokens, tags) pairs."""
+    """数据加载器，加载数据并构建词表，迭代时返回 token_id 和 tag 对。"""
 
-    def __init__(self, dataset_type: str, split: str, batch_size: int = 1, max_len: int = 512):
-        self.tokens, self.tags = load_dataset(dataset_type, split)
+    def __init__(self, dataset_type: str, split: str, vocab_size: int = 30522,
+                 batch_size: int = 1, max_len: int = 512,
+                 token2id: Optional[dict] = None):
+        self.tokens, self.tags = self._load_dataset(dataset_type, split)
         self.batch_size = batch_size
         self.max_len = max_len
+        # 词表：如果传入则使用，否则基于当前数据构建
+        if token2id is not None:
+            self.token2id = token2id
+        else:
+            self.token2id = self._build_vocab(vocab_size)
+
+    @staticmethod
+    def _load_dataset(dataset_type: str, split: str) -> Tuple[list, list]:
+        cfg = DATASET_CONFIG[dataset_type]
+        path = os.path.join(DATA_DIR, cfg[split])
+        df = pd.read_parquet(path)
+        return df["tokens"].tolist(), df["pos_tags"].tolist()
+
+    def _build_vocab(self, vocab_size: int) -> dict:
+        """基于当前加载的 tokens 构建词表，高频词优先。"""
+        freq = {}
+        for sent in self.tokens:
+            for t in sent:
+                freq[t] = freq.get(t, 0) + 1
+        sorted_tokens = sorted(freq, key=freq.get, reverse=True)
+        # 预留 0 给 [PAD]，1 给 [UNK]
+        token2id = {t: i + 2 for i, t in enumerate(sorted_tokens[:vocab_size - 2])}
+        token2id["[PAD]"] = 0
+        token2id["[UNK]"] = 1
+        return token2id
+
+    def _tokens_to_ids(self, tokens: list) -> list:
+        """将 token 列表转为 id 列表。"""
+        return [self.token2id.get(t, 1) for t in tokens]  # 1 = [UNK]
 
     def __len__(self) -> int:
         return (len(self.tokens) + self.batch_size - 1) // self.batch_size
@@ -58,7 +72,11 @@ class DataLoader:
         for i in range(0, len(self.tokens), self.batch_size):
             batch_tokens = self.tokens[i:i + self.batch_size]
             batch_tags = self.tags[i:i + self.batch_size]
-            # 截断超过 max_len 的句子
-            batch_tokens = [t[:self.max_len] for t in batch_tokens]
-            batch_tags = [t[:self.max_len] for t in batch_tags]
-            yield batch_tokens, batch_tags
+            # 截断并转换为 id
+            batch_ids = []
+            batch_labels = []
+            for tokens, tags in zip(batch_tokens, batch_tags):
+                truncated = tokens[:self.max_len]
+                batch_ids.append(self._tokens_to_ids(truncated))
+                batch_labels.append(tags[:self.max_len])
+            yield batch_ids, batch_labels
