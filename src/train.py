@@ -47,18 +47,19 @@ def train(dataset_type: str):
     for epoch in range(EPOCHS):
         model.train()
         total_loss = 0
+        train_correct = 0
+        train_total = 0
         for batch_ids, batch_tags in train_loader:
             input_ids = nn.utils.rnn.pad_sequence(
                 [torch.tensor(ids, dtype=torch.long) for ids in batch_ids],
                 batch_first=True, padding_value=0
             ).to(device)
-            attention_mask = (input_ids != 0).long()
             labels = nn.utils.rnn.pad_sequence(
                 [torch.tensor(tags, dtype=torch.long) for tags in batch_tags],
                 batch_first=True, padding_value=-100
             ).to(device)
 
-            logits = model(input_ids, attention_mask)
+            logits = model(input_ids)
             loss = loss_fn(logits.view(-1, num_labels), labels.view(-1))
 
             optimizer.zero_grad()
@@ -66,6 +67,13 @@ def train(dataset_type: str):
             optimizer.step()
 
             total_loss += loss.item()
+
+            preds = torch.argmax(logits, dim=-1)
+            valid = labels != -100
+            train_correct += (preds[valid] == labels[valid]).sum().item()
+            train_total += valid.sum().item()
+
+        train_acc = train_correct / train_total if train_total > 0 else 0.0
 
         # 每个 epoch 在 test 集上评估 accuracy
         model.eval()
@@ -77,25 +85,27 @@ def train(dataset_type: str):
                     [torch.tensor(ids, dtype=torch.long) for ids in batch_ids],
                     batch_first=True, padding_value=0
                 ).to(device)
-                attention_mask = (input_ids != 0).long()
                 labels = nn.utils.rnn.pad_sequence(
                     [torch.tensor(tags, dtype=torch.long) for tags in batch_tags],
                     batch_first=True, padding_value=-100
                 ).to(device)
 
-                logits = model(input_ids, attention_mask)
+                logits = model(input_ids)
                 preds = torch.argmax(logits, dim=-1)
 
-                mask = labels != -100
-                correct += (preds[mask] == labels[mask]).sum().item()
-                total += mask.sum().item()
+                valid = labels != -100
+                correct += (preds[valid] == labels[valid]).sum().item()
+                total += valid.sum().item()
 
-        accuracy = correct / total if total > 0 else 0.0
-        print(f"[{dataset_type}] epoch {epoch + 1:2d}  loss={total_loss:.4f}  test accuracy={accuracy:.4f}")
+        test_acc = correct / total if total > 0 else 0.0
+        print(f"[{dataset_type}] epoch {epoch + 1:2d}  loss={total_loss:.2f}  "
+              f"train acc={train_acc:.4f}  test acc={test_acc:.4f}")
 
     save_path = f"model_{dataset_type}.pt"
     model.save_model(save_path)
     print(f"model saved to {save_path}")
+
+
 if __name__ == "__main__":
     for dataset in ["english", "english_perturbed", "alien"]:
-        train(dataset)    # 训练并保存模型
+        train(dataset)
