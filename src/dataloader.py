@@ -3,6 +3,7 @@
 得到的是tokens和tags列表。
 """
 import os
+import random
 from typing import Tuple, Iterator, Optional
 
 import pandas as pd
@@ -35,23 +36,28 @@ class DataLoader:
     def __init__(self, dataset_type: str, split: str,
                  vocab_size: Optional[int] = None,
                  batch_size: int = 1, max_len: Optional[int] = None,
-                 token2id: Optional[dict] = None):
+                 token2id: Optional[dict] = None, shuffle: bool = False):
         self.dataset_type = dataset_type
-        self.tokens, self.tags = self._load_dataset(dataset_type, split)
+        raw_tokens, raw_tags = self._load_dataset(dataset_type, split)
         self.num_labels = DATASET_CONFIG[dataset_type]["num_labels"]
         self.batch_size = batch_size
+        self.shuffle = shuffle
 
         # max_len：未指定则取数据中最长句子的长度
         if max_len is not None:
             self.max_len = max_len
         else:
-            self.max_len = max(len(s) for s in self.tokens)
+            self.max_len = max(len(s) for s in raw_tokens)
 
         # 词表：如果传入则使用，否则基于当前数据构建
         if token2id is not None:
             self.token2id = token2id
         else:
-            self.token2id = self._build_vocab(vocab_size)
+            self.token2id = self._build_vocab(raw_tokens, vocab_size)
+
+        # 预先将所有 token 转换为 id，只做一次
+        self.ids = [self._tokens_to_ids(t[:self.max_len]) for t in raw_tokens]
+        self.labels = [t[:self.max_len] for t in raw_tags]
 
     @property
     def vocab_size(self) -> int:
@@ -64,10 +70,10 @@ class DataLoader:
         df = pd.read_parquet(path)
         return df["tokens"].tolist(), df["pos_tags"].tolist()
 
-    def _build_vocab(self, vocab_size: Optional[int]) -> dict:
+    def _build_vocab(self, tokens: list, vocab_size: Optional[int]) -> dict:
         """基于当前加载的 tokens 构建词表，高频词优先。"""
         freq = {}
-        for sent in self.tokens:
+        for sent in tokens:
             for t in sent:
                 freq[t] = freq.get(t, 0) + 1
         sorted_tokens = sorted(freq, key=freq.get, reverse=True)
@@ -84,17 +90,12 @@ class DataLoader:
         return [self.token2id.get(t, 1) for t in tokens]  # 1 = [UNK]
 
     def __len__(self) -> int:
-        return (len(self.tokens) + self.batch_size - 1) // self.batch_size
+        return (len(self.ids) + self.batch_size - 1) // self.batch_size
 
     def __iter__(self) -> Iterator[Tuple[list, list]]:
-        for i in range(0, len(self.tokens), self.batch_size):
-            batch_tokens = self.tokens[i:i + self.batch_size]
-            batch_tags = self.tags[i:i + self.batch_size]
-            # 截断并转换为 id
-            batch_ids = []
-            batch_labels = []
-            for tokens, tags in zip(batch_tokens, batch_tags):
-                truncated = tokens[:self.max_len]
-                batch_ids.append(self._tokens_to_ids(truncated))
-                batch_labels.append(tags[:self.max_len])
-            yield batch_ids, batch_labels
+        indices = list(range(len(self.ids)))
+        if self.shuffle:
+            random.shuffle(indices)
+        for i in range(0, len(indices), self.batch_size):
+            batch_idx = indices[i:i + self.batch_size]
+            yield [self.ids[j] for j in batch_idx], [self.labels[j] for j in batch_idx]

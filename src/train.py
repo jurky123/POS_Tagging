@@ -14,7 +14,7 @@ NUM_LAYERS = 6
 DIM_FEEDFORWARD = 2048
 DROPOUT = 0.1
 
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 LR = 1e-4
 EPOCHS = 10
 
@@ -23,7 +23,7 @@ def train(dataset_type: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 加载数据（vocab_size、max_len、num_labels 从数据集自动获取）
-    train_loader = DataLoader(dataset_type, "train", batch_size=BATCH_SIZE)
+    train_loader = DataLoader(dataset_type, "train", batch_size=BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(dataset_type, "test", batch_size=BATCH_SIZE,
                              max_len=train_loader.max_len,
                              token2id=train_loader.token2id)
@@ -101,7 +101,7 @@ def train(dataset_type: str):
         print(f"[{dataset_type}] epoch {epoch + 1:2d}  loss={total_loss:.2f}  "
               f"train acc={train_acc:.4f}  test acc={test_acc:.4f}")
 
-    save_path = f"model_{dataset_type}.pt"
+    save_path = f"checkpoints/model_{dataset_type}.pt"
     model.save_model(save_path)
     print(f"model saved to {save_path}")
 

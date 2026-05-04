@@ -2,10 +2,48 @@
 加载训练好的模型，使用test集进行评估。
 返回accuracy。
 """
+from collections import Counter
+
 import torch
 
 from dataloader import DataLoader
 from model import BERT_POS_Tagging_Model
+
+
+def evaluate_baseline(dataset_type: str) -> float:
+    """Majority Voting 基线：为每个单词分配训练集中出现频率最高的词性。"""
+    train_loader = DataLoader(dataset_type, "train")
+    test_loader = DataLoader(dataset_type, "test",
+                             max_len=train_loader.max_len,
+                             token2id=train_loader.token2id)
+
+    # 统计训练集中每个单词的词性频率
+    word_tags = {}
+    for sent_ids, sent_tags in zip(train_loader.ids, train_loader.labels):
+        for tid, tag in zip(sent_ids, sent_tags):
+            word = tid  # 用 token id 作为 key
+            if word not in word_tags:
+                word_tags[word] = Counter()
+            word_tags[word][tag] += 1
+
+    # 每个单词的最常见词性
+    word_best_tag = {w: c.most_common(1)[0][0] for w, c in word_tags.items()}
+
+    # 全局最常见的词性，作为未知词的回退
+    all_tags = [t for tags in train_loader.labels for t in tags]
+    default_tag = Counter(all_tags).most_common(1)[0][0]
+
+    # 在测试集上评估
+    correct = 0
+    total = 0
+    for sent_ids, sent_tags in zip(test_loader.ids, test_loader.labels):
+        for tid, gold in zip(sent_ids, sent_tags):
+            pred = word_best_tag.get(tid, default_tag)
+            if pred == gold:
+                correct += 1
+            total += 1
+
+    return correct / total if total > 0 else 0.0
 
 
 def evaluate(model_path: str, dataset_type: str,
