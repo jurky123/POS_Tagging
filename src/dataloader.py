@@ -46,13 +46,19 @@ def load_dataset(dataset_type: str, split: str) -> Tuple[list, list]:
 class DataLoader:
     """Simple data loader that yields (tokens, tags) pairs."""
 
-    def __init__(self, dataset_type: str, split: str, batch_size: int = 1):
+    def __init__(self, dataset_type: str, split: str, batch_size: int = 1, max_len: int = 512):
         self.tokens, self.tags = load_dataset(dataset_type, split)
         self.batch_size = batch_size
+        self.max_len = max_len
 
     def __len__(self) -> int:
         return (len(self.tokens) + self.batch_size - 1) // self.batch_size
 
     def __iter__(self) -> Iterator[Tuple[list, list]]:
         for i in range(0, len(self.tokens), self.batch_size):
-            yield self.tokens[i:i + self.batch_size], self.tags[i:i + self.batch_size]
+            batch_tokens = self.tokens[i:i + self.batch_size]
+            batch_tags = self.tags[i:i + self.batch_size]
+            # 截断超过 max_len 的句子
+            batch_tokens = [t[:self.max_len] for t in batch_tokens]
+            batch_tags = [t[:self.max_len] for t in batch_tags]
+            yield batch_tokens, batch_tags
