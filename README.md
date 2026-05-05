@@ -68,7 +68,7 @@ acc = evaluate("checkpoints/model_english.pt", "english")
 
 - **RoPE 位置编码**：在注意力计算中对 q/k 做旋转变换，无需可学习参数
 - **Word Dropout**：训练时以 10% 概率将 token 替换为 [UNK]，提升对未见词的泛化能力
-- **Transformer Encoder**：6 层，d=512，8 头，Pre-LN 架构，GELU 激活
+- **Transformer Encoder**：8 层，d=768，4 头，Pre-LN 架构，GELU 激活
 
 ## 结果
 

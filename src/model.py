@@ -69,11 +69,11 @@ class BERT_POS_Tagging_Model(nn.Module):
         self,
         vocab_size: int,
         num_labels: int,
-        d_model: int = 512,
-        nhead: int = 8,
-        num_layers: int = 6,
+        d_model: int = 768,
+        nhead: int = 4,
+        num_layers: int = 8,
         dim_feedforward: int = 2048,
-        dropout: float = 0.1,
+        dropout: float = 0.15,
         max_len: int = 512,
     ):
         super().__init__()

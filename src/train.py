@@ -13,16 +13,17 @@ from dataloader import DataLoader
 from model import BERT_POS_Tagging_Model
 
 # 超参数
-D_MODEL = 512
-NHEAD = 8
-NUM_LAYERS = 6
+D_MODEL = 768
+NHEAD = 4
+NUM_LAYERS = 8
 DIM_FEEDFORWARD = 2048
-DROPOUT = 0.1
+DROPOUT = 0.15
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 LR = 1e-4
-EPOCHS = 10
-UNK_MASK_RATE = 0.1
+EPOCHS = 35
+UNK_MASK_RATE = 0.2
+
 
 _device = None
 _is_main = True

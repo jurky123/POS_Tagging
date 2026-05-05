@@ -47,9 +47,9 @@ def evaluate_baseline(dataset_type: str) -> float:
 
 
 def evaluate(model_path: str, dataset_type: str,
-             d_model: int = 512, nhead: int = 8,
-             num_layers: int = 6, dim_feedforward: int = 2048,
-             dropout: float = 0.1) -> float:
+             d_model: int = 768, nhead: int = 4,
+             num_layers: int = 8, dim_feedforward: int = 2048,
+             dropout: float = 0.15) -> float:
     # 加载数据（vocab_size、max_len、num_labels 从数据集自动获取）
     train_loader = DataLoader(dataset_type, "train")
     test_loader = DataLoader(dataset_type, "test",
