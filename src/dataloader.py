@@ -37,27 +37,27 @@ class DataLoader:
                  vocab_size: Optional[int] = None,
                  batch_size: int = 1, max_len: Optional[int] = None,
                  token2id: Optional[dict] = None, shuffle: bool = False,
-                 unk_mask_rate: float = 0.0):
+                 unk_mask_rate: float = 0.0,
+                 rank: int = 0, world_size: int = 1):
         self.dataset_type = dataset_type
         raw_tokens, raw_tags = self._load_dataset(dataset_type, split)
         self.num_labels = DATASET_CONFIG[dataset_type]["num_labels"]
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.unk_mask_rate = unk_mask_rate
+        self.rank = rank
+        self.world_size = world_size
 
-        # max_len
         if max_len is not None:
             self.max_len = max_len
         else:
             self.max_len = max(len(s) for s in raw_tokens)
 
-        # 词表
         if token2id is not None:
             self.token2id = token2id
         else:
             self.token2id = self._build_vocab(raw_tokens, vocab_size)
 
-        # 预先将所有 token 转换为 id
         self.ids = [self._tokens_to_ids(t[:self.max_len]) for t in raw_tokens]
         self.labels = [t[:self.max_len] for t in raw_tags]
 
@@ -73,37 +73,39 @@ class DataLoader:
         return df["tokens"].tolist(), df["pos_tags"].tolist()
 
     def _build_vocab(self, tokens: list, vocab_size: Optional[int]) -> dict:
-        """基于当前加载的 tokens 构建词表"""
         freq = {}
         for sent in tokens:
             for t in sent:
                 freq[t] = freq.get(t, 0) + 1
         sorted_tokens = sorted(freq, key=freq.get, reverse=True)
         n = len(sorted_tokens)
-        # 预留 0 给 [PAD]，1 给 [UNK]
         token2id = {t: i + 2 for i, t in enumerate(sorted_tokens[:n])}
         token2id["[PAD]"] = 0
         token2id["[UNK]"] = 1
         return token2id
 
     def _tokens_to_ids(self, tokens: list) -> list:
-        """将 token 列表转为 id 列表"""
-        return [self.token2id.get(t, 1) for t in tokens]  # 1 = [UNK]
+        return [self.token2id.get(t, 1) for t in tokens]
 
     def __len__(self) -> int:
-        return (len(self.ids) + self.batch_size - 1) // self.batch_size
+        total = (len(self.ids) + self.batch_size - 1) // self.batch_size
+        return total // self.world_size
 
     def __iter__(self) -> Iterator[Tuple[list, list]]:
         indices = list(range(len(self.ids)))
         if self.shuffle:
             random.shuffle(indices)
+        all_batches = []
         for i in range(0, len(indices), self.batch_size):
             batch_idx = indices[i:i + self.batch_size]
             batch_ids = [self.ids[j].copy() for j in batch_idx]
-            # 随机将部分 token 替换为 [UNK]，让模型学会根据上下文推断
             if self.unk_mask_rate > 0:
                 for ids in batch_ids:
                     for k in range(len(ids)):
                         if ids[k] != 0 and random.random() < self.unk_mask_rate:
-                            ids[k] = 1  # [UNK]
-            yield batch_ids, [self.labels[j] for j in batch_idx]
+                            ids[k] = 1
+            all_batches.append((batch_ids, [self.labels[j] for j in batch_idx]))
+        batches_per_rank = len(all_batches) // self.world_size
+        start = self.rank * batches_per_rank
+        for b in all_batches[start:start + batches_per_rank]:
+            yield b
