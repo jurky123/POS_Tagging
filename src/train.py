@@ -17,15 +17,16 @@ DROPOUT = 0.1
 BATCH_SIZE = 32
 LR = 1e-4
 EPOCHS = 10
+UNK_MASK_RATE = 0.1
 
 
 def train(dataset_type: str):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    n_gpus = torch.cuda.device_count() if device.type == "cuda" else 0
-    print(f"[{dataset_type}] using device: {device}, gpus: {n_gpus}")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"[{dataset_type}] using device: {device}")
 
     # 加载数据（vocab_size、max_len、num_labels 从数据集自动获取）
-    train_loader = DataLoader(dataset_type, "train", batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = DataLoader(dataset_type, "train", batch_size=BATCH_SIZE,
+                              shuffle=True, unk_mask_rate=UNK_MASK_RATE)
     test_loader = DataLoader(dataset_type, "test", batch_size=BATCH_SIZE,
                              max_len=train_loader.max_len,
                              token2id=train_loader.token2id)
@@ -42,8 +43,6 @@ def train(dataset_type: str):
         dropout=DROPOUT,
         max_len=train_loader.max_len,
     ).to(device)
-    if n_gpus > 1:
-        model = nn.DataParallel(model)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
     loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
@@ -106,8 +105,7 @@ def train(dataset_type: str):
               f"train acc={train_acc:.4f}  test acc={test_acc:.4f}")
 
     save_path = f"checkpoints/model_{dataset_type}.pt"
-    model_to_save = model.module if n_gpus > 1 else model
-    model_to_save.save_model(save_path)
+    model.save_model(save_path)
     print(f"model saved to {save_path}")
 
 
